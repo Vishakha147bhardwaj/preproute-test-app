@@ -32,7 +32,7 @@ export interface SubTopic {
 }
 // Test related types
 export type TestStatus = 'draft' | 'live' | null;
-export type TestType = 'practice' | 'chapter_wise' | 'pyq' | 'mock_test';
+export type TestType = 'chapter_wise' | 'pyq' | 'mock_test';
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 export interface Test {
   id: string;
