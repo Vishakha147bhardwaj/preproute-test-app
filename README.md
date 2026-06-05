@@ -1,73 +1,55 @@
-# React + TypeScript + Vite
+# Preproute Test Management App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A 5-page test management application built for the Preproute Frontend Developer evaluation task.
 
-Currently, two official plugins are available:
+## Live Demo
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+https://preproute-test-app.vercel.app
 
-## React Compiler
+## Test Credentials
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Username: `vedant-admin`
+- Password: `vedant123`
 
-## Expanding the ESLint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- React + TypeScript (Vite)
+- Redux Toolkit — global state (auth, test, questions)
+- React Hook Form + Zod — form validation
+- Axios — API integration with JWT interceptor
+- Tailwind CSS — styling
+- React Router v6 — navigation and protected routes
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Features
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- JWT authentication with persistent login
+- Dashboard with test list, search, filter and sort
+- Create/Edit test with cascading dropdowns (Subject → Topic → Sub-topic)
+- Add MCQ questions with options, solution and difficulty settings
+- Publish test with Publish Now / Schedule Publish options
+- Protected routes — redirect to login if unauthenticated
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Technical Decisions
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+- **Redux Toolkit** over Context API for scalable state management across pages
+- **Zod** for schema-based form validation — type-safe and composable
+- **Axios interceptor** to auto-attach JWT token on every request and handle 401 globally
+- **Cascading dropdowns** — topics fetch on subject change, sub-topics fetch on topic change
+- **Feature branches** — each page developed in isolation (feature/auth, feature/dashboard, etc.)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Project Structure
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+src/
+├── api/ # axios instance + all API functions
+├── app/ # redux store + slices (auth, test)
+├── components/ # Layout (sidebar + header)
+├── pages/ # Login, Dashboard, CreateTest, AddQuestions, Publish
+├── routes/ # ProtectedRoute
+└── types/ # TypeScript interfaces
+
+## Run Locally
+
+```bash
+npm install
+npm run dev
 ```
