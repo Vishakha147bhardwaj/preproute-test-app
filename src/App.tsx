@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAppSelector } from './app/hooks';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -7,9 +8,14 @@ import AddQuestions from './pages/AddQuestions';
 import Publish from './pages/Publish';
 
 function App() {
+  const token = useAppSelector((state) => state.auth.token);
+
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
+      <Route
+        path="/login"
+        element={token ? <Navigate to="/dashboard" replace /> : <Login />}
+      />
       <Route
         path="/dashboard"
         element={
@@ -42,8 +48,18 @@ function App() {
           </ProtectedRoute>
         }
       />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* Root — smart redirect based on auth */}
+      <Route
+        path="/"
+        element={
+          token ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
