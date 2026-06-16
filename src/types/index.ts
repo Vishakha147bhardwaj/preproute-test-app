@@ -2,17 +2,26 @@ export interface LoginRequest{
     userId: string;
     password: string;
 }
-export interface User{
-    id: string;
-    userId: string;
-    name:string;
+export interface User {
+  id: string;
+  userId: string;
+  name?: string;
+  role?: string;
+  subrole?: string;
+  phone?: string;
+  joiningDate?: string;
+  endDate?: string;
+  lastActive?: string;
+  payment?: boolean;
 }
-export interface AuthResponse{
-success:boolean;
-data:{
-    token:string;
-    user:User;
-};
+export interface AuthResponse {
+  status: string;
+  success?: boolean;
+  message: string;
+  data: {
+    token: string;
+    user: User;
+  };
 }
 // Subjects, Topics, Sub-topics
 export interface Subject {
