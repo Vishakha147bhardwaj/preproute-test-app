@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setAllTests, setCurrentTest } from '../app/slices/testSlice';
-import { getAllTestsApi, updateTestApi } from '../api';
+import { getAllTestsApi, updateTestApi,deleteTestApi } from '../api';
 import type { Test } from '../types';
 import Layout from '../components/Layout';
 import {
@@ -71,7 +71,7 @@ const Dashboard = () => {
     setError(null);
     try {
       const res = await getAllTestsApi();
-      if (res.data.success) {
+     if (res.data.status === 'success' || res.data.success)  {
         dispatch(setAllTests(res.data.data));
       }
     } catch {
@@ -95,16 +95,18 @@ const Dashboard = () => {
     navigate(`/create-test/${test.id}/publish`);
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      await updateTestApi(id, { status: null });
-      fetchTests();
-    } catch {
-      setError('Failed to delete test.');
-    } finally {
-      setDeleteConfirmId(null);
-    }
-  };
+const handleDelete = async (id: string) => {
+  try {
+    await deleteTestApi(id);
+    dispatch(setAllTests(allTests.filter((t) => t.id !== id)));
+  } catch {
+    // fallback: mark as deleted and filter on frontend
+    await updateTestApi(id, { status: 'deleted' });
+    dispatch(setAllTests(allTests.filter((t) => t.id !== id)));
+  } finally {
+    setDeleteConfirmId(null);
+  }
+};
 
   const handleSort = (field: 'name' | 'created_at') => {
     if (sortField === field) {

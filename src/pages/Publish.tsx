@@ -12,13 +12,7 @@ import Layout from '../components/Layout';
 import { ChevronDown, Pencil } from 'lucide-react';
 
 type PublishTab = 'now' | 'schedule';
-type LiveUntil =
-  | 'always'
-  | '1week'
-  | '2weeks'
-  | '3weeks'
-  | '1month'
-  | 'custom';
+type LiveUntil = 'always' | '1week' | '2weeks' | '3weeks' | '1month' | 'custom';
 
 const LIVE_UNTIL_OPTIONS: { value: LiveUntil; label: string }[] = [
   { value: 'always', label: 'Always Available' },
@@ -27,6 +21,13 @@ const LIVE_UNTIL_OPTIONS: { value: LiveUntil; label: string }[] = [
   { value: '3weeks', label: '3 Weeks' },
   { value: '1month', label: '1 Month' },
   { value: 'custom', label: 'Custom Duration' },
+];
+
+const OPTION_LABELS: { key: keyof Pick<Question, 'option1' | 'option2' | 'option3' | 'option4'>; label: string }[] = [
+  { key: 'option1', label: 'A' },
+  { key: 'option2', label: 'B' },
+  { key: 'option3', label: 'C' },
+  { key: 'option4', label: 'D' },
 ];
 
 const Publish = () => {
@@ -40,6 +41,7 @@ const Publish = () => {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [expandedQuestion, setExpandedQuestion] = useState<string | null>(null);
 
   const [publishTab, setPublishTab] = useState<PublishTab>('now');
   const [liveUntil, setLiveUntil] = useState<LiveUntil>('custom');
@@ -48,30 +50,35 @@ const Publish = () => {
   const [endDate, setEndDate] = useState('');
   const [endTime, setEndTime] = useState('');
 
-  const fetchTest = async () => {
-    setLoading(true);
-    try {
-      const res = await getTestByIdApi(testId!);
-      if (res.data.success) {
-        dispatch(setCurrentTest(res.data.data));
-        if (res.data.data.questions && res.data.data.questions.length > 0) {
-          const qRes = await fetchBulkQuestionsApi(res.data.data.questions);
-          if (qRes.data.success) {
-            setSavedQuestions(qRes.data.data);
+  useEffect(() => {
+    if (!testId) return;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const res = await getTestByIdApi(testId);
+        if (res.data.status === 'success' || res.data.success) {
+          dispatch(setCurrentTest(res.data.data));
+          const questions = res.data.data.questions;
+          if (Array.isArray(questions) && questions.length > 0) {
+            // questions may be populated objects or ID strings
+            if (typeof questions[0] === 'object' && questions[0] !== null) {
+     setSavedQuestions(questions as unknown as Question[]);
+            } else {
+              const qRes = await fetchBulkQuestionsApi(questions as string[]);
+              if (qRes.data.status === 'success' || qRes.data.success) {
+                setSavedQuestions(qRes.data.data);
+              }
+            }
           }
         }
+      } catch {
+        setError('Failed to load test.');
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setError('Failed to load test.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (testId) fetchTest();
-  }, [testId]);
+    };
+    run();
+  }, [testId, dispatch]);
 
   const handleConfirm = async () => {
     if (!testId) return;
@@ -79,7 +86,7 @@ const Publish = () => {
     setError(null);
     try {
       const res = await publishTestApi(testId);
-      if (res.data.success) {
+      if (res.data.status === 'success' || res.data.success) {
         setSuccess(true);
         dispatch(clearTest());
         setTimeout(() => navigate('/dashboard'), 2000);
@@ -104,9 +111,7 @@ const Publish = () => {
           <h2 className="text-xl font-semibold text-gray-800 mb-2">
             Test Published Successfully!
           </h2>
-          <p className="text-sm text-gray-500">
-            Redirecting to dashboard...
-          </p>
+          <p className="text-sm text-gray-500">Redirecting to dashboard...</p>
         </div>
       </Layout>
     );
@@ -144,45 +149,40 @@ const Publish = () => {
               Total Questions . {totalRequired}
             </p>
             <div className="space-y-2">
-              {savedQuestions.map((_, i) => (
-                <div
-                  key={i}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-green-50 border border-green-200"
+              {savedQuestions.map((q, i) => (
+                <button
+                  key={q.id}
+                  onClick={() => setExpandedQuestion(expandedQuestion === q.id ? null : q.id)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-green-50 border border-green-200 hover:bg-green-100 transition"
                 >
                   <div className="flex items-center gap-2">
                     <span className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
                       <span className="text-white text-xs">✓</span>
                     </span>
-                    <span className="text-gray-700 text-xs">
-                      Question {i + 1}
-                    </span>
+                    <span className="text-gray-700 text-xs">Question {i + 1}</span>
                   </div>
                   <ChevronDown
                     size={12}
-                    className="text-gray-400 -rotate-90 flex-shrink-0"
+                    className={`text-gray-400 flex-shrink-0 transition-transform ${
+                      expandedQuestion === q.id ? '' : '-rotate-90'
+                    }`}
                   />
-                </div>
+                </button>
               ))}
             </div>
           </div>
 
           {/* ── Main content ── */}
-          <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6">
+          <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6 overflow-y-auto">
 
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-base font-semibold text-gray-800">
-                  Test creation
-                </h2>
-              </div>
+              <h2 className="text-base font-semibold text-gray-800">Test creation</h2>
             </div>
 
             {/* Test created badge */}
             <div className="flex items-center gap-3 mb-6">
-              <span className="text-sm font-medium text-gray-700">
-                Test created
-              </span>
+              <span className="text-sm font-medium text-gray-700">Test created</span>
               <span className="flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
                 <span>✓</span>
                 All {progress} Questions done
@@ -194,6 +194,7 @@ const Publish = () => {
               <div className="border border-gray-100 rounded-xl p-5 mb-6 bg-gray-50 relative">
                 <button
                   onClick={() => navigate(`/create-test?edit=${testId}`)}
+                  title="Edit test details"
                   className="absolute top-4 right-4 p-1.5 text-blue-400 hover:text-blue-600 transition"
                 >
                   <Pencil size={15} />
@@ -214,44 +215,34 @@ const Publish = () => {
                     <div className="space-y-1.5 text-sm">
                       <div className="flex items-center gap-2">
                         <span className="text-gray-400 w-16 text-xs">Subject</span>
-                        <span className="text-xs text-gray-700">
-                          : {currentTest.subject}
-                        </span>
+                        <span className="text-xs text-gray-700">: {currentTest.subject}</span>
                       </div>
-                      {Array.isArray(currentTest.topics) &&
-                        currentTest.topics.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 w-16 text-xs">Topic</span>
-                            <div className="flex gap-1 flex-wrap items-center">
-                              <span className="text-xs text-gray-700">:</span>
-                              {currentTest.topics.map((t, i) => (
-                                <span
-                                  key={i}
-                                  className="px-2 py-0.5 bg-orange-50 text-orange-600 text-xs rounded-full border border-orange-100"
-                                >
-                                  {t}
-                                </span>
-                              ))}
-                            </div>
+                      {Array.isArray(currentTest.topics) && currentTest.topics.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 w-16 text-xs">Topic</span>
+                          <div className="flex gap-1 flex-wrap items-center">
+                            <span className="text-xs text-gray-700">:</span>
+                            {currentTest.topics.map((t, i) => (
+                              <span key={i} className="px-2 py-0.5 bg-orange-50 text-orange-600 text-xs rounded-full border border-orange-100">
+                                {t}
+                              </span>
+                            ))}
                           </div>
-                        )}
-                      {Array.isArray(currentTest.sub_topics) &&
-                        currentTest.sub_topics.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 w-16 text-xs">Sub Topic</span>
-                            <div className="flex gap-1 flex-wrap items-center">
-                              <span className="text-xs text-gray-700">:</span>
-                              {currentTest.sub_topics.map((st, i) => (
-                                <span
-                                  key={i}
-                                  className="px-2 py-0.5 bg-yellow-50 text-yellow-600 text-xs rounded-full border border-yellow-100"
-                                >
-                                  {st}
-                                </span>
-                              ))}
-                            </div>
+                        </div>
+                      )}
+                      {Array.isArray(currentTest.sub_topics) && currentTest.sub_topics.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 w-16 text-xs">Sub Topic</span>
+                          <div className="flex gap-1 flex-wrap items-center">
+                            <span className="text-xs text-gray-700">:</span>
+                            {currentTest.sub_topics.map((st, i) => (
+                              <span key={i} className="px-2 py-0.5 bg-yellow-50 text-yellow-600 text-xs rounded-full border border-yellow-100">
+                                {st}
+                              </span>
+                            ))}
                           </div>
-                        )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
@@ -259,6 +250,116 @@ const Publish = () => {
                     <span>📋 {currentTest.total_questions} Q's</span>
                     <span>📊 {currentTest.total_marks} Marks</span>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Questions list ── */}
+            {savedQuestions.length > 0 && (
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-700">
+                    Questions ({savedQuestions.length})
+                  </h3>
+                  <button
+                    onClick={() => navigate(`/create-test/${testId}/questions`)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-blue-300 text-blue-500 rounded-lg hover:bg-blue-50 transition"
+                  >
+                    <Pencil size={11} />
+                    Edit Questions
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {savedQuestions.map((q, i) => (
+                    <div
+                      key={q.id}
+                      className="border border-gray-100 rounded-xl overflow-hidden"
+                    >
+                      {/* Question header — always visible */}
+                      <button
+                        onClick={() => setExpandedQuestion(expandedQuestion === q.id ? null : q.id)}
+                        className="w-full flex items-start justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition text-left"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
+                            {i + 1}
+                          </span>
+                          <span className="text-sm text-gray-700 font-medium line-clamp-2">
+                            {q.question}
+                          </span>
+                        </div>
+                        <ChevronDown
+                          size={14}
+                          className={`text-gray-400 flex-shrink-0 ml-2 mt-0.5 transition-transform ${
+                            expandedQuestion === q.id ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {/* Question details — expanded */}
+                      {expandedQuestion === q.id && (
+                        <div className="px-4 py-4 border-t border-gray-100">
+                          {/* Options */}
+                          <div className="space-y-2 mb-4">
+                            {OPTION_LABELS.map(({ key, label }) => {
+                              const correct = `option${label === 'A' ? '1' : label === 'B' ? '2' : label === 'C' ? '3' : '4'}`;
+                              const isAns = q.correct_option === correct;
+                              return (
+                                <div
+                                  key={key}
+                                  className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-sm ${
+                                    isAns
+                                      ? 'bg-green-50 border-green-200 text-green-700'
+                                      : 'bg-white border-gray-100 text-gray-700'
+                                  }`}
+                                >
+                                  <span className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-medium flex-shrink-0 ${
+                                    isAns ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-500'
+                                  }`}>
+                                    {label}
+                                  </span>
+                                  {q[key]}
+                                  {isAns && (
+                                    <span className="ml-auto text-xs text-green-600 font-medium">
+                                      ✓ Correct
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Explanation */}
+                          {q.explanation && (
+                            <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-3">
+                              <p className="text-xs text-blue-600 font-medium mb-0.5">Explanation</p>
+                              <p className="text-xs text-blue-700">{q.explanation}</p>
+                            </div>
+                          )}
+
+                          {/* Meta */}
+                          <div className="flex items-center gap-3 flex-wrap">
+                            {q.difficulty && (
+                              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full capitalize">
+                                {q.difficulty}
+                              </span>
+                            )}
+                            {q.topic && (
+                              <span className="px-2 py-0.5 bg-orange-50 text-orange-600 text-xs rounded-full border border-orange-100">
+                                {q.topic}
+                              </span>
+                            )}
+                            {q.sub_topic && (
+                              <span className="px-2 py-0.5 bg-yellow-50 text-yellow-600 text-xs rounded-full border border-yellow-100">
+                                {q.sub_topic}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -293,21 +394,17 @@ const Publish = () => {
               </button>
             </div>
 
-            {/* Schedule date/time — only for schedule tab */}
+            {/* Schedule date/time */}
             {publishTab === 'schedule' && (
               <div className="mb-6">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">
-                  Select Date and Time
-                </h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Select Date and Time</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={scheduleDate}
-                      onChange={(e) => setScheduleDate(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 transition text-gray-600"
-                    />
-                  </div>
+                  <input
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 transition text-gray-600"
+                  />
                   <div className="relative">
                     <select
                       value={scheduleTime}
@@ -323,10 +420,7 @@ const Publish = () => {
                         ))
                       )}
                     </select>
-                    <ChevronDown
-                      size={14}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                    />
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
               </div>
@@ -334,18 +428,13 @@ const Publish = () => {
 
             {/* Live Until */}
             <div className="mb-8">
-              <h3 className="text-sm font-medium text-gray-700 mb-1">
-                Live Until
-              </h3>
+              <h3 className="text-sm font-medium text-gray-700 mb-1">Live Until</h3>
               <p className="text-xs text-gray-400 mb-4">
                 Choose how long this test should remain available on the platform.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 {LIVE_UNTIL_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.value}
-                    className="flex items-center gap-3 cursor-pointer"
-                  >
+                  <label key={opt.value} className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="radio"
                       name="live_until"
@@ -358,18 +447,14 @@ const Publish = () => {
                 ))}
               </div>
 
-              {/* Custom duration date/time pickers */}
               {liveUntil === 'custom' && (
                 <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      placeholder="Select End Date"
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 transition text-gray-600"
-                    />
-                  </div>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 transition text-gray-600"
+                  />
                   <div className="relative">
                     <select
                       value={endTime}
@@ -385,10 +470,7 @@ const Publish = () => {
                         ))
                       )}
                     </select>
-                    <ChevronDown
-                      size={14}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                    />
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
               )}

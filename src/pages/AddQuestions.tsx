@@ -6,10 +6,8 @@ import {
   getTestByIdApi,
   bulkCreateQuestionsApi,
   fetchBulkQuestionsApi,
-  getTopicsBySubjectApi,
-  getSubTopicsByMultipleTopicsApi,
 } from '../api';
-import type { Question, CorrectOption, DifficultyLevel, Topic, SubTopic } from '../types';
+import type { Question, CorrectOption, DifficultyLevel } from '../types';
 import Layout from '../components/Layout';
 import { ChevronDown, Trash2, Plus } from 'lucide-react';
 
@@ -22,8 +20,6 @@ interface QuestionForm {
   correct_option: CorrectOption;
   explanation: string;
   difficulty: DifficultyLevel | '';
-  topic: string;
-  sub_topic: string;
 }
 
 const emptyQuestion = (): QuestionForm => ({
@@ -35,8 +31,6 @@ const emptyQuestion = (): QuestionForm => ({
   correct_option: 'option1',
   explanation: '',
   difficulty: '',
-  topic: '',
-  sub_topic: '',
 });
 
 const OPTIONS: { key: CorrectOption; label: string }[] = [
@@ -54,48 +48,29 @@ const AddQuestions = () => {
 
   const [savedQuestions, setSavedQuestions] = useState<Question[]>([]);
   const [currentForm, setCurrentForm] = useState<QuestionForm>(emptyQuestion());
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [subTopics, setSubTopics] = useState<SubTopic[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [diffOpen, setDiffOpen] = useState(false);
-  const [topicOpen, setTopicOpen] = useState(false);
-  const [subTopicOpen, setSubTopicOpen] = useState(false);
-
-  // ── Fetch functions declared BEFORE useEffects ──
-
-  const fetchSubTopics = async (topicId: string) => {
-    try {
-      const res = await getSubTopicsByMultipleTopicsApi([topicId]);
-      if (res.data.success) setSubTopics(res.data.data);
-    } catch { /* empty */ }
-  };
-
-  const fetchTopics = async () => {
-    try {
-      const res = await getTopicsBySubjectApi(currentTest!.subject);
-      if (res.data.success) setTopics(res.data.data);
-    } catch { /* empty */ }
-  };
 
   const fetchTest = async () => {
     setLoading(true);
     try {
       const res = await getTestByIdApi(testId!);
-      if (res.data.success) {
+      if (res.data.status === 'success' || res.data.success) {
         dispatch(setCurrentTest(res.data.data));
         if (res.data.data.questions && res.data.data.questions.length > 0) {
           const qRes = await fetchBulkQuestionsApi(res.data.data.questions);
-          if (qRes.data.success) {
+          if (qRes.data.status === 'success' || qRes.data.success) {
             setSavedQuestions(qRes.data.data);
             dispatch(setQuestions(qRes.data.data));
           }
         }
       }
-    } catch { /* empty */ } finally {
+    } catch {
       setError('Failed to load test.');
+    } finally {
       setLoading(false);
     }
   };
@@ -104,16 +79,6 @@ const AddQuestions = () => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (testId) fetchTest();
   }, [testId]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (currentTest?.subject) fetchTopics();
-  }, [currentTest]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (currentForm.topic) fetchSubTopics(currentForm.topic);
-  }, [currentForm.topic]);
 
   const updateForm = (key: keyof QuestionForm, value: string) => {
     setCurrentForm((prev) => ({ ...prev, [key]: value }));
@@ -141,26 +106,26 @@ const AddQuestions = () => {
     setSaving(true);
     setError(null);
     try {
-      const payload = {
-        questions: [
-          {
-            type: 'mcq' as const,
-            question: currentForm.question,
-            option1: currentForm.option1,
-            option2: currentForm.option2,
-            option3: currentForm.option3,
-            option4: currentForm.option4,
-            correct_option: currentForm.correct_option,
-            explanation: currentForm.explanation || undefined,
-            difficulty: (currentForm.difficulty as DifficultyLevel) || undefined,
-            topic: currentForm.topic || undefined,
-            sub_topic: currentForm.sub_topic || undefined,
-            test_id: testId!,
-          },
-        ],
-      };
+     const payload = {
+  questions: [
+    {
+      type: 'mcq' as const,
+      question: currentForm.question,
+      option1: currentForm.option1,
+      option2: currentForm.option2,
+      option3: currentForm.option3,
+      option4: currentForm.option4,
+      correct_option: currentForm.correct_option,
+      explanation: currentForm.explanation || undefined,
+      difficulty: (currentForm.difficulty as DifficultyLevel) || undefined,
+      test_id: testId!,
+      subject: currentTest!.subject, // required string — e.g. "Maths"
+    },
+  ],
+};
+
       const res = await bulkCreateQuestionsApi(payload);
-      if (res.data.success) {
+      if (res.data.status === 'success' || res.data.success) {
         const newQ = res.data.data[0];
         const updated = [...savedQuestions, newQ];
         setSavedQuestions(updated);
@@ -168,7 +133,8 @@ const AddQuestions = () => {
         setCurrentForm(emptyQuestion());
         setError(null);
       }
-    } catch {
+    } catch (err) {
+      console.log('SAVE ERROR', err);
       setError('Failed to save question.');
     } finally {
       setSaving(false);
@@ -227,7 +193,6 @@ const AddQuestions = () => {
             </p>
 
             <div className="space-y-2">
-              {/* Saved questions */}
               {savedQuestions.map((q, i) => (
                 <div
                   key={q.id}
@@ -248,7 +213,6 @@ const AddQuestions = () => {
                 </div>
               ))}
 
-              {/* Current question slot */}
               <div className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 border border-blue-200">
                 <div className="flex items-center gap-2">
                   <span className="w-4 h-4 rounded-full border-2 border-blue-400 flex-shrink-0" />
@@ -262,7 +226,6 @@ const AddQuestions = () => {
                 />
               </div>
 
-              {/* Remaining placeholder slots */}
               {Array.from({
                 length: Math.max(0, Math.min(3, totalRequired - progress - 1)),
               }).map((_, i) => (
@@ -284,7 +247,6 @@ const AddQuestions = () => {
           {/* ── Main content ── */}
           <div className="flex-1 bg-white rounded-xl border border-gray-100 p-6 overflow-y-auto">
 
-            {/* Test info card */}
             {currentTest && (
               <div className="border border-gray-100 rounded-xl p-4 mb-6 bg-gray-50">
                 <div className="flex items-start justify-between">
@@ -333,7 +295,6 @@ const AddQuestions = () => {
               </div>
             )}
 
-            {/* Question header */}
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-medium text-gray-700">
                 Question {progress + 1}
@@ -355,7 +316,6 @@ const AddQuestions = () => {
               </div>
             )}
 
-            {/* Question text */}
             <div className="border border-gray-200 rounded-lg p-4 mb-6">
               <textarea
                 value={currentForm.question}
@@ -366,7 +326,6 @@ const AddQuestions = () => {
               />
             </div>
 
-            {/* Options */}
             <div className="mb-6">
               <p className="text-sm font-medium text-gray-700 mb-3">
                 Type the options below
@@ -400,7 +359,6 @@ const AddQuestions = () => {
               </div>
             </div>
 
-            {/* Solution */}
             <div className="mb-6">
               <p className="text-sm font-medium text-gray-700 mb-2">
                 Add Solution
@@ -416,14 +374,12 @@ const AddQuestions = () => {
               </div>
             </div>
 
-            {/* Question settings */}
+            {/* Question settings — Difficulty only; Topic/Sub-topic removed (backend rejects them on this endpoint) */}
             <div className="mb-8">
               <p className="text-sm font-medium text-gray-700 mb-4">
                 Question settings
               </p>
               <div className="space-y-3">
-
-                {/* Difficulty */}
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">
                     Level of Difficulty
@@ -466,107 +422,9 @@ const AddQuestions = () => {
                     )}
                   </div>
                 </div>
-
-                {/* Topic */}
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">
-                    Topic
-                  </label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setTopicOpen(!topicOpen)}
-                      className="w-full flex items-center justify-between px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-left hover:border-blue-400 transition"
-                    >
-                      <span
-                        className={
-                          currentForm.topic ? 'text-gray-800' : 'text-gray-400'
-                        }
-                      >
-                        {topics.find((t) => t.id === currentForm.topic)?.name ||
-                          'Select from Drop-down'}
-                      </span>
-                      <ChevronDown size={15} className="text-gray-400" />
-                    </button>
-                    {topicOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
-                        {topics.length === 0 ? (
-                          <p className="px-4 py-3 text-sm text-gray-400">
-                            No topics available
-                          </p>
-                        ) : (
-                          topics.map((t) => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => {
-                                updateForm('topic', t.id);
-                                setTopicOpen(false);
-                              }}
-                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 text-gray-700 transition"
-                            >
-                              {t.name}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Sub-topic */}
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">
-                    Sub-topic
-                  </label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setSubTopicOpen(!subTopicOpen)}
-                      disabled={!currentForm.topic}
-                      className="w-full flex items-center justify-between px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-left hover:border-blue-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <span
-                        className={
-                          currentForm.sub_topic
-                            ? 'text-gray-800'
-                            : 'text-gray-400'
-                        }
-                      >
-                        {subTopics.find((s) => s.id === currentForm.sub_topic)
-                          ?.name || 'Select from Drop-down'}
-                      </span>
-                      <ChevronDown size={15} className="text-gray-400" />
-                    </button>
-                    {subTopicOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
-                        {subTopics.length === 0 ? (
-                          <p className="px-4 py-3 text-sm text-gray-400">
-                            No sub-topics available
-                          </p>
-                        ) : (
-                          subTopics.map((s) => (
-                            <button
-                              key={s.id}
-                              type="button"
-                              onClick={() => {
-                                updateForm('sub_topic', s.id);
-                                setSubTopicOpen(false);
-                              }}
-                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 text-gray-700 transition"
-                            >
-                              {s.name}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* Bottom actions */}
             <div className="flex items-center justify-between pt-4 border-t border-gray-100">
               <button
                 onClick={() => navigate('/dashboard')}

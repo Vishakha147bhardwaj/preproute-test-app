@@ -40,8 +40,8 @@ export interface SubTopic {
   topic_id: string;
 }
 // Test related types
-export type TestStatus = 'draft' | 'live' | null;
-export type TestType = 'chapter_wise' | 'pyq' | 'mock_test';
+export type TestStatus = 'draft' | 'live' | 'unpublished' | 'scheduled' | 'expired' | 'deleted';
+export type TestType = 'chapterwise' | 'pyq' | 'mock_test';
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 export interface Test {
   id: string;
@@ -111,6 +111,7 @@ export interface CreateQuestionRequest {
   correct_option: CorrectOption;
   explanation?: string;
   difficulty?: DifficultyLevel;
+  subject?: string;   // ← only this line is added
   topic?: string;
   sub_topic?: string;
   media_url?: string;
@@ -121,7 +122,8 @@ export interface BulkCreateQuestionsRequest {
 }
 // API Generic Response
 export interface ApiResponse<T> {
-  success: boolean;
+  status?: string;
+  success?: boolean;
   data: T;
   message?: string;
 }

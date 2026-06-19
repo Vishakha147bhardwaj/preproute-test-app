@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
@@ -11,6 +11,7 @@ import {
   getSubTopicsByMultipleTopicsApi,
   createTestApi,
   updateTestApi,
+  getTestByIdApi,
 } from '../api';
 import type { Subject, Topic, SubTopic, TestType, DifficultyLevel } from '../types';
 import Layout from '../components/Layout';
@@ -18,7 +19,7 @@ import { ChevronDown, X } from 'lucide-react';
 
 const testSchema = z.object({
   name: z.string().min(1, 'Test name is required'),
-  type: z.enum(['chapter_wise', 'pyq', 'mock_test']),
+  type: z.enum(['chapterwise', 'pyq', 'mock_test']),
   subject: z.string().min(1, 'Subject is required'),
   topics: z.array(z.string()).min(1, 'At least one topic is required'),
   sub_topics: z.array(z.string()),
@@ -34,7 +35,7 @@ const testSchema = z.object({
 type TestFormData = z.infer<typeof testSchema>;
 
 const TAB_TYPES: { label: string; value: TestType }[] = [
-  { label: 'Chapter Wise', value: 'chapter_wise' },
+  { label: 'Chapter Wise', value: 'chapterwise' },
   { label: 'PYQ', value: 'pyq' },
   { label: 'Mock Test', value: 'mock_test' },
 ];
@@ -52,10 +53,34 @@ const CreateTest = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Dropdown open states
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [topicOpen, setTopicOpen] = useState(false);
   const [subTopicOpen, setSubTopicOpen] = useState(false);
+
+  // Prevent topics/subtopics prefill from running more than once per edit session
+  const topicsPrefilled = useRef(false);
+  const subTopicsPrefilled = useRef(false);
+
+  const subjectRef = useRef<HTMLDivElement>(null);
+  const topicRef = useRef<HTMLDivElement>(null);
+  const subTopicRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (subjectRef.current && !subjectRef.current.contains(e.target as Node)) {
+        setSubjectOpen(false);
+      }
+      if (topicRef.current && !topicRef.current.contains(e.target as Node)) {
+        setTopicOpen(false);
+      }
+      if (subTopicRef.current && !subTopicRef.current.contains(e.target as Node)) {
+        setSubTopicOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const {
     register,
@@ -68,7 +93,7 @@ const CreateTest = () => {
   } = useForm<TestFormData>({
     resolver: zodResolver(testSchema),
     defaultValues: {
-      type: 'chapter_wise',
+      type: 'chapterwise',
       difficulty: 'easy',
       correct_marks: 5,
       wrong_marks: -1,
@@ -82,79 +107,140 @@ const CreateTest = () => {
   const selectedTopics = watch('topics');
   const selectedType = watch('type');
 
-  // Fetch subjects on mount
+  // ── Fetch subjects on mount ──
   useEffect(() => {
-    const fetchSubjects = async () => {
+    const run = async () => {
       try {
         const res = await getSubjectsApi();
-        if (res.data.success) setSubjects(res.data.data);
+        if (res.data.status === 'success' || res.data.success) {
+          setSubjects(res.data.data);
+        }
       } catch {
         setError('Failed to load subjects.');
       }
     };
-    fetchSubjects();
+    run();
   }, []);
 
-  // Fetch topics when subject changes
+  // ── Fetch test fresh when editing ──
+  useEffect(() => {
+    if (!editId) return;
+    topicsPrefilled.current = false;
+    subTopicsPrefilled.current = false;
+    const run = async () => {
+      try {
+        const res = await getTestByIdApi(editId);
+        if (res.data.status === 'success' || res.data.success) {
+          dispatch(setCurrentTest(res.data.data));
+        }
+      } catch {
+        setError('Failed to load test for editing.');
+      }
+    };
+    run();
+  }, [editId, dispatch]);
+
+  // ── Prefill form once currentTest + subjects are both ready ──
+  useEffect(() => {
+    if (!editId || !currentTest || subjects.length === 0) return;
+    const matchedSubject = subjects.find((s) => s.name === currentTest.subject);
+    if (!matchedSubject) return;
+    reset({
+      name: currentTest.name,
+      type: currentTest.type,
+      subject: matchedSubject.id,
+      topics: [],
+      sub_topics: [],
+      difficulty: currentTest.difficulty,
+      total_time: currentTest.total_time,
+      correct_marks: currentTest.correct_marks,
+      wrong_marks: currentTest.wrong_marks,
+      unattempt_marks: currentTest.unattempt_marks,
+      total_questions: currentTest.total_questions,
+      total_marks: currentTest.total_marks,
+    });
+  }, [editId, currentTest, subjects, reset]);
+
+  // ── Fetch topics when subject changes ──
   useEffect(() => {
     if (!selectedSubject) return;
-    const fetchTopics = async () => {
+    const run = async () => {
       try {
         const res = await getTopicsBySubjectApi(selectedSubject);
-        if (res.data.success) {
+        if (res.data.status === 'success' || res.data.success) {
           setTopics(res.data.data);
-          setValue('topics', []);
-          setValue('sub_topics', []);
-          setSubTopics([]);
+          // Only reset topics/subtopics if NOT in edit prefill flow
+          if (!editId || topicsPrefilled.current) {
+            setValue('topics', []);
+            setValue('sub_topics', []);
+            setSubTopics([]);
+          }
         }
       } catch {
         setError('Failed to load topics.');
       }
     };
-    fetchTopics();
-  }, [selectedSubject, setValue]);
+    run();
+  }, [selectedSubject, setValue, editId]);
 
-  // Fetch sub-topics when topics change
+  // ── Prefill topics after they load in edit mode ──
+  useEffect(() => {
+    if (!editId || !currentTest || topics.length === 0) return;
+    if (topicsPrefilled.current) return;
+    if (!Array.isArray(currentTest.topics) || currentTest.topics.length === 0) return;
+
+    const matchedTopicIds = currentTest.topics
+      .map((name) => topics.find((t) => t.name === name)?.id)
+      .filter((id): id is string => Boolean(id));
+
+    if (matchedTopicIds.length > 0) {
+      topicsPrefilled.current = true;
+      setValue('topics', matchedTopicIds);
+    }
+  }, [editId, currentTest, topics, setValue]);
+
+  // ── Fetch sub-topics when topics change ──
   useEffect(() => {
     if (!selectedTopics || selectedTopics.length === 0) {
       setSubTopics([]);
-      setValue('sub_topics', []);
+      if (!editId || subTopicsPrefilled.current) {
+        setValue('sub_topics', []);
+      }
       return;
     }
-    const fetchSubTopics = async () => {
+    const run = async () => {
       try {
         const res = await getSubTopicsByMultipleTopicsApi(selectedTopics);
-        if (res.data.success) {
+        if (res.data.status === 'success' || res.data.success) {
           setSubTopics(res.data.data);
-          setValue('sub_topics', []);
+          if (!editId || subTopicsPrefilled.current) {
+            setValue('sub_topics', []);
+          }
         }
       } catch {
         setError('Failed to load sub-topics.');
       }
     };
-    fetchSubTopics();
-  }, [selectedTopics, setValue]);
+    run();
+  }, [selectedTopics, setValue, editId]);
 
-  // Prefill form if editing
+  // ── Prefill sub-topics after they load in edit mode ──
   useEffect(() => {
-    if (editId && currentTest) {
-      reset({
-        name: currentTest.name,
-        type: currentTest.type,
-        subject: currentTest.subject,
-        topics: currentTest.topics || [],
-        sub_topics: currentTest.sub_topics || [],
-        difficulty: currentTest.difficulty,
-        total_time: currentTest.total_time,
-        correct_marks: currentTest.correct_marks,
-        wrong_marks: currentTest.wrong_marks,
-        unattempt_marks: currentTest.unattempt_marks,
-        total_questions: currentTest.total_questions,
-        total_marks: currentTest.total_marks,
-      });
-    }
-  }, [editId, currentTest, reset]);
+    if (!editId || !currentTest || subTopics.length === 0) return;
+    if (subTopicsPrefilled.current) return;
+    if (!Array.isArray(currentTest.sub_topics) || currentTest.sub_topics.length === 0) return;
 
+    const matchedSubTopicIds = currentTest.sub_topics
+      .map((name) => subTopics.find((s) => s.name === name)?.id)
+      .filter((id): id is string => Boolean(id));
+
+    if (matchedSubTopicIds.length > 0) {
+      subTopicsPrefilled.current = true;
+      setValue('sub_topics', matchedSubTopicIds);
+    }
+  }, [editId, currentTest, subTopics, setValue]);
+
+  // ── Submit ──
   const onSubmit = async (data: TestFormData) => {
     setLoading(true);
     setError(null);
@@ -166,15 +252,12 @@ const CreateTest = () => {
           total_questions: data.total_questions,
           total_marks: data.total_marks,
         });
-        if (res.data.success) {
+        if (res.data.status === 'success' || res.data.success) {
           dispatch(setCurrentTest(res.data.data));
         }
       } else {
-        const res = await createTestApi({
-          ...data,
-          status: null,
-        });
-        if (res.data.success) {
+        const res = await createTestApi({ ...data, status: 'draft' });
+        if (res.data.status === 'success' || res.data.success) {
           testId = res.data.data.id;
           dispatch(setCurrentTest(res.data.data));
         }
@@ -187,7 +270,6 @@ const CreateTest = () => {
     }
   };
 
-  // Multi-select toggle helper
   const toggleItem = (
     current: string[],
     id: string,
@@ -227,7 +309,7 @@ const CreateTest = () => {
           {TAB_TYPES.map((tab) => (
             <button
               key={tab.value}
-              onClick={() => setValue('type', tab.value)}
+              onClick={() => setValue('type', tab.value as TestType)}
               className={`px-4 py-2 text-sm font-medium rounded-md transition ${
                 selectedType === tab.value
                   ? 'bg-white text-blue-600 shadow-sm'
@@ -257,7 +339,7 @@ const CreateTest = () => {
                 name="subject"
                 control={control}
                 render={({ field }) => (
-                  <div className="relative">
+                  <div ref={subjectRef} className="relative">
                     <button
                       type="button"
                       onClick={() => setSubjectOpen(!subjectOpen)}
@@ -323,7 +405,7 @@ const CreateTest = () => {
                 name="topics"
                 control={control}
                 render={({ field }) => (
-                  <div className="relative">
+                  <div ref={topicRef} className="relative">
                     <button
                       type="button"
                       onClick={() => setTopicOpen(!topicOpen)}
@@ -337,7 +419,6 @@ const CreateTest = () => {
                       </span>
                       <ChevronDown size={16} className="text-gray-400" />
                     </button>
-                    {/* Selected topics tags */}
                     {field.value.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {getTopicNames(field.value).map((name, i) => (
@@ -400,7 +481,7 @@ const CreateTest = () => {
                 name="sub_topics"
                 control={control}
                 render={({ field }) => (
-                  <div className="relative">
+                  <div ref={subTopicRef} className="relative">
                     <button
                       type="button"
                       onClick={() => setSubTopicOpen(!subTopicOpen)}
@@ -414,7 +495,6 @@ const CreateTest = () => {
                       </span>
                       <ChevronDown size={16} className="text-gray-400" />
                     </button>
-                    {/* Selected sub-topics tags */}
                     {field.value.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {getSubTopicNames(field.value).map((name, i) => (
@@ -471,7 +551,7 @@ const CreateTest = () => {
                 Duration (Minutes)
               </label>
               <input
-                {...register('total_time')}
+                {...register('total_time', { valueAsNumber: true })}
                 type="number"
                 placeholder="Enter the time"
                 className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition placeholder:text-gray-400"
@@ -514,42 +594,34 @@ const CreateTest = () => {
           <div className="mt-6">
             <h3 className="text-sm font-medium text-gray-700 mb-4">Marking Scheme:</h3>
             <div className="flex flex-wrap gap-6 items-end">
-
-              {/* Wrong Answer */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">Wrong Answer</label>
                 <input
-                  {...register('wrong_marks')}
+                  {...register('wrong_marks', { valueAsNumber: true })}
                   type="number"
                   className="w-28 px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 text-center"
                 />
               </div>
-
-              {/* Unattempted */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">Unattempted</label>
                 <input
-                  {...register('unattempt_marks')}
+                  {...register('unattempt_marks', { valueAsNumber: true })}
                   type="number"
                   className="w-28 px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 text-center"
                 />
               </div>
-
-              {/* Correct Answer */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">Correct Answer</label>
                 <input
-                  {...register('correct_marks')}
+                  {...register('correct_marks', { valueAsNumber: true })}
                   type="number"
                   className="w-28 px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 text-center"
                 />
               </div>
-
-              {/* No of Questions */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">No of Questions</label>
                 <input
-                  {...register('total_questions')}
+                  {...register('total_questions', { valueAsNumber: true })}
                   type="number"
                   placeholder="Ex:250"
                   className="w-36 px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 placeholder:text-gray-400"
@@ -558,12 +630,10 @@ const CreateTest = () => {
                   <p className="text-red-500 text-xs mt-1">{errors.total_questions.message}</p>
                 )}
               </div>
-
-              {/* Total Marks */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1.5">Total Marks</label>
                 <input
-                  {...register('total_marks')}
+                  {...register('total_marks', { valueAsNumber: true })}
                   type="number"
                   placeholder="Ex:250"
                   className="w-36 px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 placeholder:text-gray-400"

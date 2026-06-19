@@ -56,3 +56,6 @@ export const fetchBulkQuestionsApi = (questionIds: string[]) =>
   axiosInstance.post<ApiResponse<Question[]>>('/questions/fetchBulk', {
     question_ids: questionIds,
   });
+
+  export const deleteTestApi = (id: string) =>
+  axiosInstance.delete(`/tests/${id}`);
